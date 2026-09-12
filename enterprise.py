@@ -1,4 +1,4 @@
-"""UpGuard cybersecurity API client.
+"""Enterprise cybersecurity API client.
 
 OAuth 2.0 client-credentials flow with tokens cached in Redis
 (no stampeding when the voice agent fans out tool calls),
@@ -12,13 +12,13 @@ import httpx
 from app.config import settings
 from app.redis_client import cache_get_json, cache_set_json
 
-TOKEN_CACHE_KEY = "upguard:oauth_token"
-RISK_CACHE_KEY = "upguard:risk_profile"
+TOKEN_CACHE_KEY = "Enterprise:oauth_token"
+RISK_CACHE_KEY = "Enterprise:risk_profile"
 
 
-class UpGuardClient:
+class EnterpriseClient:
     def __init__(self):
-        self._http = httpx.AsyncClient(base_url=settings.upguard_api_base, timeout=10)
+        self._http = httpx.AsyncClient(base_url=settings.Enterprise_api_base, timeout=10)
 
     # ---------- OAuth 2.0 ---------------------------------------------------
 
@@ -28,11 +28,11 @@ class UpGuardClient:
             return cached["access_token"]
 
         resp = await httpx.AsyncClient().post(
-            settings.upguard_token_url,
+            settings.Enterprise_token_url,
             data={
                 "grant_type": "client_credentials",
-                "client_id": settings.upguard_client_id,
-                "client_secret": settings.upguard_client_secret,
+                "client_id": settings.Enterprise_client_id,
+                "client_secret": settings.Enterprise_client_secret,
             },
         )
         resp.raise_for_status()
@@ -46,7 +46,7 @@ class UpGuardClient:
         return body["access_token"]
 
     async def _headers(self) -> dict:
-        if not settings.upguard_client_id:
+        if not settings.Enterprise_client_id:
             return {}  # mock mode
         return {"Authorization": f"Bearer {await self._get_token()}"}
 
@@ -58,14 +58,14 @@ class UpGuardClient:
         cached = await cache_get_json(RISK_CACHE_KEY)
         if cached:
             return cached
-        profile = await self._get("/risk_profile") if settings.upguard_client_id \
+        profile = await self._get("/risk_profile") if settings.Enterprise_client_id \
             else self._mock_risk_profile()
         await cache_set_json(RISK_CACHE_KEY, profile, settings.risk_cache_ttl_seconds)
         return profile
 
     async def get_vulnerabilities(self, min_severity: str = "medium") -> list[dict]:
         """Open vulnerabilities above a severity floor, newest first."""
-        if not settings.upguard_client_id:
+        if not settings.Enterprise_client_id:
             return self._mock_vulns()
         data = await self._get("/vulnerabilities", params={"status": "open"})
         rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}
