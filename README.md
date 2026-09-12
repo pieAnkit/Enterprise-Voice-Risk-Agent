@@ -2,7 +2,7 @@
 
 Call a phone number and ask, in plain language, *"What's our current risk score?"*,
 *"Any critical vulnerabilities on our vendors?"*, or *"What's our exposure to
-ransomware?"* — and get answers from **live UpGuard data** and a **RAG archive
+ransomware?"* — and get answers from **live Enterprise data** and a **RAG archive
 of historical findings**, served by a **GPT-4o voice agent** via Vapi.ai.
 
 Passive Q&A is half the product: scanners POST webhooks to this service, and a
@@ -16,17 +16,17 @@ Caller ──phone──▶ Vapi.ai ──▶ GPT-4o Realtime (speech-to-speech)
                        │  tool-call → POST /vapi/tools
                        ▼
               FastAPI tool router
-                 ├─ get_risk_summary  → UpGuard API (OAuth2 → Redis cache)
-                 ├─ get_vulnerabilities → UpGuard API → PostgreSQL (audit)
+                 ├─ get_risk_summary  → Enterprise API (OAuth2 → Redis cache)
+                 ├─ get_vulnerabilities → Enterprise API → PostgreSQL (audit)
                  └─ query_findings    → LangChain → Pinecone (semantic RAG)
 
-Scanner / UpGuard ──▶ POST /webhooks/vulnerability (HMAC-verified)
+Scanner / Enterprise ──▶ POST /webhooks/vulnerability (HMAC-verified)
                         → normalize → PostgreSQL (idempotent)
                         → Redis pub/sub
                         → severity == critical → Vapi outbound call ☎️
 ```
 
-Stack: **FastAPI · Vapi.ai · OpenAI GPT-4o + embeddings · UpGuard API (OAuth 2.0) ·
+Stack: **FastAPI · Vapi.ai · OpenAI GPT-4o + embeddings · Enterprise API (OAuth 2.0) ·
 PostgreSQL · Redis · Pinecone · LangChain**
 
 ## Repo layout
@@ -38,7 +38,7 @@ app/
   db.py               async SQLAlchemy engine + session
   models.py           Alert / CallLog (JSONB raw payloads for audit)
   redis_client.py     token cache, risk cache, pub/sub
-  upguard.py          OAuth2 client-credentials client + mock mode
+  Enterprise.py          OAuth2 client-credentials client + mock mode
   rag.py              LangChain + Pinecone semantic query (graceful fallback)
   vapi_tools.py       POST /vapi/tools — Vapi server-tool endpoint
   webhooks.py         POST /webhooks/vulnerability → proactive outbound call
@@ -51,7 +51,7 @@ tests/                pytest suite
 
 ```bash
 docker compose up -d          # api + postgres + redis
-cp .env.example .env          # fill in keys (mock modes work without UpGuard/OpenAI)
+cp .env.example .env          # fill in keys (mock modes work without Enterprise/OpenAI)
 pytest -v
 ```
 
@@ -60,8 +60,8 @@ Dashboard → **Assistants → Import JSON** → paste `config/vapi_assistant.js
 Set `serverUrl` to your public `https://<domain>/vapi/tools` (ngrok for dev) and
 attach a phone number. Voice model: `gpt-4o-realtime-preview`.
 
-### 2. UpGuard (OAuth 2.0)
-Set `UPGUARD_CLIENT_ID` / `UPGUARD_CLIENT_SECRET`. Tokens are fetched via
+### 2. Enterprise (OAuth 2.0)
+Set `Enterprise_CLIENT_ID` / `Enterprise_CLIENT_SECRET`. Tokens are fetched via
 client-credentials and cached in Redis (no stampedes under concurrent callers);
 risk profiles cached 5 minutes. **No credentials → realistic mock data**, so the
 whole agent works out of the box.
@@ -72,7 +72,7 @@ whole agent works out of the box.
 keys, a canned demo finding is returned.
 
 ### 4. Proactive alerts
-Point your scanner / UpGuard webhook at `POST /webhooks/vulnerability` with header
+Point your scanner / Enterprise webhook at `POST /webhooks/vulnerability` with header
 `X-Signature-256: <hmac-sha256 of body>`. Critical severity → Vapi places an
 outbound call to `ONCALL_NUMBER` and the assistant opens with the alert brief.
 
